@@ -10,6 +10,7 @@
 #include "stride.hpp"
 #include "../core/types.hpp"
 #include "../core/config.hpp"
+#include <cuda_runtime.h>
 
 namespace choreo_ir {
 
@@ -116,9 +117,20 @@ public:
     /**
      * @brief Check if layout is contiguous
      * @return true if contiguous, false otherwise
+     *
+     * For ROW_MAJOR, checks row-major contiguity;
+     * For COLUMN_MAJOR, checks column-major contiguity;
+     * For others, defaults to row-major.
      */
     bool is_contiguous() const {
-        return stride_.is_contiguous(shape_);
+        switch (layout_type_) {
+            case LayoutType::ROW_MAJOR:
+                return stride_.is_contiguous(shape_);
+            case LayoutType::COLUMN_MAJOR:
+                return stride_.is_contiguous_col_major(shape_);
+            default:
+                return stride_.is_contiguous(shape_);
+        }
     }
 
     /**

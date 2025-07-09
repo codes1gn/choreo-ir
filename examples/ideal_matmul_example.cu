@@ -64,8 +64,8 @@ __global__ void ideal_matmul_kernel(
             
             // Data movement: Shared -> Local (registers)
             // Framework maps thread to appropriate 16x16 tile
-            local_A = shared_A.subtile(k_inner);
-            local_B = shared_B.subtile(k_inner);
+            local_A = shared_A.tile(k_inner);
+            local_B = shared_B.tile(k_inner);
             
             // Tensor core computation: C += A * B
             // Framework automatically selects WMMA/MMA based on hardware

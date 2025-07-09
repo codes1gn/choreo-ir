@@ -319,7 +319,9 @@ inline float get_elapsed_time(cudaEvent_t start, cudaEvent_t end) {
 class CudaStream {
 public:
     CudaStream() : stream_(create_stream()) {}
-    ~CudaStream() { destroy_stream(stream_); }
+    ~CudaStream() { 
+        if (stream_) destroy_stream(stream_); 
+    }
     
     CudaStream(const CudaStream&) = delete;
     CudaStream& operator=(const CudaStream&) = delete;
@@ -340,7 +342,9 @@ public:
     cudaStream_t get() const { return stream_; }
     operator cudaStream_t() const { return stream_; }
     
-    void synchronize() { synchronize_stream(stream_); }
+    void synchronize() { 
+        if (stream_) synchronize_stream(stream_); 
+    }
 
 private:
     cudaStream_t stream_;
@@ -352,7 +356,9 @@ private:
 class CudaEvent {
 public:
     CudaEvent() : event_(create_event()) {}
-    ~CudaEvent() { destroy_event(event_); }
+    ~CudaEvent() { 
+        if (event_) destroy_event(event_); 
+    }
     
     CudaEvent(const CudaEvent&) = delete;
     CudaEvent& operator=(const CudaEvent&) = delete;
@@ -373,11 +379,19 @@ public:
     cudaEvent_t get() const { return event_; }
     operator cudaEvent_t() const { return event_; }
     
-    void record(cudaStream_t stream = 0) { record_event(event_, stream); }
-    void wait() { wait_event(event_); }
+    void record(cudaStream_t stream = 0) { 
+        if (event_) record_event(event_, stream); 
+    }
+    
+    void wait() { 
+        if (event_) wait_event(event_); 
+    }
     
     float elapsed_time(const CudaEvent& other) const {
-        return get_elapsed_time(event_, other.event_);
+        if (event_ && other.event_) {
+            return get_elapsed_time(event_, other.event_);
+        }
+        return 0.0f;
     }
 
 private:

@@ -189,6 +189,103 @@ set_tests_properties(StrideTest PROPERTIES
     LABELS "unit;tensor;stride"
 )
 
+# Create layout test executable
+add_executable(test_layout
+    test_layout.cpp
+)
+
+target_link_libraries(test_layout
+    PRIVATE
+    choreo-ir-core
+    GTest::gtest
+    GTest::gtest_main
+)
+
+target_include_directories(test_layout
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/tests
+)
+
+target_compile_features(test_layout PRIVATE cxx_std_14)
+
+# Add compiler-specific flags
+target_compile_options(test_layout PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra>
+)
+
+# Register layout test with CTest
+add_test(NAME LayoutTest COMMAND test_layout)
+set_tests_properties(LayoutTest PROPERTIES
+    TIMEOUT 60
+    LABELS "unit;tensor;layout"
+)
+
+# Create tensor test executable
+add_executable(test_tensor
+    test_tensor_simple.cpp
+)
+
+target_link_libraries(test_tensor
+    PRIVATE
+    choreo-ir-core
+    GTest::gtest
+    GTest::gtest_main
+)
+
+target_include_directories(test_tensor
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/tests
+)
+
+target_compile_features(test_tensor PRIVATE cxx_std_14)
+
+# Add compiler-specific flags
+target_compile_options(test_tensor PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra>
+)
+
+# Register tensor test with CTest
+add_test(NAME TensorTest COMMAND test_tensor)
+set_tests_properties(TensorTest PROPERTIES
+    TIMEOUT 60
+    LABELS "unit;tensor;core"
+)
+
+# Create cuda_utils test executable
+add_executable(test_cuda_utils
+    test_cuda_utils.cpp
+)
+
+target_link_libraries(test_cuda_utils
+    PRIVATE
+    choreo-ir-core
+    GTest::gtest
+    GTest::gtest_main
+    CUDA::cudart
+)
+
+target_include_directories(test_cuda_utils
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/tests
+)
+
+target_compile_features(test_cuda_utils PRIVATE cxx_std_14)
+
+# Add compiler-specific flags
+target_compile_options(test_cuda_utils PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra>
+)
+
+# Register cuda_utils test with CTest
+add_test(NAME CudaUtilsTest COMMAND test_cuda_utils)
+set_tests_properties(CudaUtilsTest PROPERTIES
+    TIMEOUT 60
+    LABELS "unit;cuda;utils"
+)
+
 # Create integration test executable
 add_executable(test_integration
     test_integration.cpp
@@ -218,7 +315,7 @@ set_tests_properties(IntegrationTest PROPERTIES
 # Create custom target to run all tests
 add_custom_target(run_tests
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
-    DEPENDS test_device test_shape test_stride test_ideal_api test_integration
+    DEPENDS test_device test_shape test_stride test_layout test_tensor test_ideal_api test_integration
     COMMENT "Running all tests"
 )
 
@@ -232,7 +329,7 @@ add_custom_target(run_device_tests
 # Create custom target for tensor tests only
 add_custom_target(run_tensor_tests
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -L tensor
-    DEPENDS test_shape test_stride
+    DEPENDS test_shape test_stride test_layout test_tensor
     COMMENT "Running tensor abstraction tests"
 )
 

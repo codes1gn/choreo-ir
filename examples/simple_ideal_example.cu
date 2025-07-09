@@ -53,8 +53,8 @@ __global__ void simple_matmul_kernel(
             
             // 数据传输：Shared -> Local
             // 框架自动映射线程到合适的16x16 tile
-            local_A = shared_A.subtile(k_inner, {16, 16});
-            local_B = shared_B.subtile(k_inner, {16, 16});
+            local_A = shared_A.tile(k_inner, {16, 16});
+            local_B = shared_B.tile(k_inner, {16, 16});
             
             // Tensor core计算：C += A * B
             // 框架根据硬件自动选择WMMA/MMA指令

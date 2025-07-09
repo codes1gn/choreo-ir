@@ -7,6 +7,9 @@
 #define CHOREO_IR_TENSOR_TENSOR_HPP
 
 #include <memory>
+#include <algorithm>
+#include <cstring>
+#include <type_traits>
 #include <cuda_runtime.h>
 #include "layout.hpp"
 #include "../core/types.hpp"
@@ -185,7 +188,7 @@ public:
     __device__ TensorView<T> copy_to_local(T (&local_array)[LOCAL_SIZE]) const {
         static_assert(LOCAL_SIZE > 0, "Local array size must be positive");
         
-        index_t copy_size = min(LOCAL_SIZE, static_cast<dim_t>(numel()));
+        index_t copy_size = std::min(LOCAL_SIZE, static_cast<dim_t>(numel()));
         
         #pragma unroll
         for (dim_t i = 0; i < copy_size; ++i) {
@@ -222,7 +225,7 @@ public:
     template<typename SrcT>
     __device__ TensorView<T>& operator=(const TensorView<SrcT>& src) {
         // Type checking
-        static_assert(std::is_convertible_v<SrcT, T>, "Source type must be convertible to destination type");
+        static_assert(std::is_convertible<SrcT, T>::value, "Source type must be convertible to destination type");
         
         // Memory space transfer logic
         if (memory_space_ == MemorySpace::SHARED && src.memory_space() == MemorySpace::GLOBAL) {
@@ -233,7 +236,7 @@ public:
             // This is conceptual - actual implementation would be more complex
         } else {
             // Direct copy for same memory space
-            index_t min_elements = min(numel(), src.numel());
+            index_t min_elements = std::min(numel(), src.numel());
             for (index_t i = 0; i < min_elements; ++i) {
                 data_[i] = static_cast<T>(src.data()[i]);
             }
@@ -540,8 +543,24 @@ public:
      * @param value Fill value
      */
     void fill(T value) {
-        // Implementation would use CUDA kernels for device memory
-        // or std::fill for host memory
+        if (data_ == nullptr || layout_.numel() == 0) {
+            return;
+        }
+        
+        if (memory_type_ == MemoryType::HOST) {
+            // Host memory: use std::fill
+            std::fill_n(data_, layout_.numel(), value);
+        } else {
+            // Device memory: use cudaMemset for zero, otherwise launch a simple kernel
+            if (value == T(0)) {
+                cudaMemset(data_, 0, layout_.numel() * sizeof(T));
+            } else {
+                // For non-zero values, we'd need a CUDA kernel
+                // For now, use host memory and copy
+                std::vector<T> host_data(layout_.numel(), value);
+                cudaMemcpy(data_, host_data.data(), layout_.numel() * sizeof(T), cudaMemcpyHostToDevice);
+            }
+        }
     }
 
     /**
@@ -549,7 +568,17 @@ public:
      * @param host_data Host data pointer
      */
     void copy_from_host(const T* host_data) {
-        // Implementation would use cudaMemcpy
+        if (data_ == nullptr || host_data == nullptr || layout_.numel() == 0) {
+            return;
+        }
+        
+        size_t bytes = layout_.numel() * sizeof(T);
+        
+        if (memory_type_ == MemoryType::HOST) {
+            std::memcpy(data_, host_data, bytes);
+        } else {
+            cudaMemcpy(data_, host_data, bytes, cudaMemcpyHostToDevice);
+        }
     }
 
     /**
@@ -557,7 +586,17 @@ public:
      * @param host_data Host data pointer
      */
     void copy_to_host(T* host_data) const {
-        // Implementation would use cudaMemcpy
+        if (data_ == nullptr || host_data == nullptr || layout_.numel() == 0) {
+            return;
+        }
+        
+        size_t bytes = layout_.numel() * sizeof(T);
+        
+        if (memory_type_ == MemoryType::HOST) {
+            std::memcpy(host_data, data_, bytes);
+        } else {
+            cudaMemcpy(host_data, data_, bytes, cudaMemcpyDeviceToHost);
+        }
     }
 
     /**
@@ -611,14 +650,36 @@ private:
      * @brief Allocate memory for tensor
      */
     void allocate() {
-        // Implementation would handle different memory types
+        if (layout_.numel() == 0) {
+            data_ = nullptr;
+            return;
+        }
+        
+        size_t bytes = layout_.numel() * sizeof(T);
+        
+        if (memory_type_ == MemoryType::HOST) {
+            data_ = new T[layout_.numel()];
+        } else if (memory_type_ == MemoryType::DEVICE) {
+            cudaMalloc(&data_, bytes);
+        } else {
+            // MemoryType::UNIFIED
+            cudaMallocManaged(&data_, bytes);
+        }
     }
 
     /**
      * @brief Deallocate tensor memory
      */
     void deallocate() {
-        // Implementation would handle different memory types
+        if (data_ != nullptr) {
+            if (memory_type_ == MemoryType::HOST) {
+                delete[] data_;
+            } else {
+                // Both DEVICE and UNIFIED use cudaFree
+                cudaFree(data_);
+            }
+            data_ = nullptr;
+        }
     }
 
     /**
@@ -626,7 +687,28 @@ private:
      * @param other Source tensor
      */
     void copy_from(const Tensor<T>& other) {
-        // Implementation would use appropriate copy method
+        if (data_ == nullptr || other.data_ == nullptr || 
+            layout_.numel() != other.layout_.numel()) {
+            return;
+        }
+        
+        size_t bytes = layout_.numel() * sizeof(T);
+        
+        // Determine copy type based on memory types
+        cudaMemcpyKind copy_kind;
+        if (memory_type_ == MemoryType::HOST && other.memory_type_ == MemoryType::HOST) {
+            // Host to Host
+            std::memcpy(data_, other.data_, bytes);
+            return;
+        } else if (memory_type_ == MemoryType::HOST && other.memory_type_ == MemoryType::DEVICE) {
+            copy_kind = cudaMemcpyDeviceToHost;
+        } else if (memory_type_ == MemoryType::DEVICE && other.memory_type_ == MemoryType::HOST) {
+            copy_kind = cudaMemcpyHostToDevice;
+        } else {
+            copy_kind = cudaMemcpyDeviceToDevice;
+        }
+        
+        cudaMemcpy(data_, other.data_, bytes, copy_kind);
     }
 };
 

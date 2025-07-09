@@ -116,7 +116,7 @@ local tensor<half> local_A;      // Thread-local memory (registers)
 shared_A = global_A.tile({row, col}, {TILE_M, TILE_K});
 
 // Shared → Local: Automatic thread mapping
-local_A = shared_A.subtile(offset, {16, 16});
+local_A = shared_A.tile(offset, {16, 16});
 ```
 
 ### 3. Natural Tensor Core Operations
@@ -222,8 +222,8 @@ __global__ void matmul_kernel(
         
         // Tensor core operations
         for (auto k_inner : range(tile_size_k, 16)) {
-            local_A = shared_A.subtile(k_inner, {16, 16});
-            local_B = shared_B.subtile(k_inner, {16, 16});
+            local_A = shared_A.tile(k_inner, {16, 16});
+            local_B = shared_B.tile(k_inner, {16, 16});
             
             // Natural tensor core usage
             local_C += local_A * local_B;
@@ -383,7 +383,7 @@ auto local_tensor = Tensor<float>::local({16, 16});
 
 // Automatic memory transfers
 shared_tensor = global_tensor.tile(offset, shape);
-local_tensor = shared_tensor.subtile(offset, shape);
+local_tensor = shared_tensor.tile(offset, shape);
 ```
 
 ## Current Implementation Status
