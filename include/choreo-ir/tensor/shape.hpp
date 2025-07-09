@@ -11,6 +11,7 @@
 #include <initializer_list>
 #include <algorithm>
 #include <numeric>
+
 #include "../core/types.hpp"
 #include "../core/config.hpp"
 
@@ -31,10 +32,11 @@ public:
      * @brief Constructor from initializer list
      * @param dims Dimensions
      */
-    Shape(std::initializer_list<index_t> dims) : ndims_(static_cast<dim_t>(dims.size())) {
-        if (ndims_ > config::MAX_TENSOR_DIMS) {
+    Shape(std::initializer_list<index_t> dims) {
+        if (dims.size() > config::MAX_TENSOR_DIMS) {
             throw std::invalid_argument("Too many dimensions");
         }
+        ndims_ = static_cast<dim_t>(dims.size());
         std::copy(dims.begin(), dims.end(), dims_.begin());
     }
 
@@ -42,10 +44,11 @@ public:
      * @brief Constructor from vector
      * @param dims Dimensions
      */
-    explicit Shape(const std::vector<index_t>& dims) : ndims_(static_cast<dim_t>(dims.size())) {
-        if (ndims_ > config::MAX_TENSOR_DIMS) {
+    explicit Shape(const std::vector<index_t>& dims) {
+        if (dims.size() > config::MAX_TENSOR_DIMS) {
             throw std::invalid_argument("Too many dimensions");
         }
+        ndims_ = static_cast<dim_t>(dims.size());
         std::copy(dims.begin(), dims.end(), dims_.begin());
     }
 

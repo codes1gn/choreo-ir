@@ -31,10 +31,11 @@ public:
      * @brief Constructor from initializer list
      * @param strides Stride values
      */
-    Stride(std::initializer_list<index_t> strides) : ndims_(static_cast<dim_t>(strides.size())) {
-        if (ndims_ > config::MAX_TENSOR_DIMS) {
+    Stride(std::initializer_list<index_t> strides) {
+        if (strides.size() > config::MAX_TENSOR_DIMS) {
             throw std::invalid_argument("Too many dimensions");
         }
+        ndims_ = static_cast<dim_t>(strides.size());
         std::copy(strides.begin(), strides.end(), strides_.begin());
     }
 
@@ -42,10 +43,11 @@ public:
      * @brief Constructor from vector
      * @param strides Stride values
      */
-    explicit Stride(const std::vector<index_t>& strides) : ndims_(static_cast<dim_t>(strides.size())) {
-        if (ndims_ > config::MAX_TENSOR_DIMS) {
+    explicit Stride(const std::vector<index_t>& strides) {
+        if (strides.size() > config::MAX_TENSOR_DIMS) {
             throw std::invalid_argument("Too many dimensions");
         }
+        ndims_ = static_cast<dim_t>(strides.size());
         std::copy(strides.begin(), strides.end(), strides_.begin());
     }
 
@@ -172,7 +174,7 @@ public:
      * @return Linear offset
      */
     index_t offset(const std::vector<index_t>& indices) const {
-        if (indices.size() != ndims_) {
+        if (static_cast<dim_t>(indices.size()) != ndims_) {
             throw std::invalid_argument("Number of indices must match number of dimensions");
         }
         
@@ -200,6 +202,32 @@ public:
         // Check if it matches row-major layout
         index_t expected_stride = 1;
         for (dim_t i = ndims_ - 1; i >= 0; --i) {
+            if (strides_[i] != expected_stride) {
+                return false;
+            }
+            expected_stride *= shape[i];
+        }
+        
+        return true;
+    }
+
+    /**
+     * @brief Check if stride represents contiguous memory layout for column-major
+     * @param shape Tensor shape
+     * @return true if contiguous, false otherwise
+     */
+    bool is_contiguous_col_major(const Shape& shape) const {
+        if (ndims_ != shape.ndims()) {
+            return false;
+        }
+        
+        if (ndims_ == 0) {
+            return true;
+        }
+        
+        // Check if it matches column-major layout
+        index_t expected_stride = 1;
+        for (dim_t i = 0; i < ndims_; ++i) {
             if (strides_[i] != expected_stride) {
                 return false;
             }

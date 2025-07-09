@@ -125,6 +125,70 @@ if(CMAKE_CUDA_COMPILER)
     )
 endif()
 
+# Create shape test executable
+add_executable(test_shape
+    test_shape.cpp
+)
+
+target_link_libraries(test_shape
+    PRIVATE
+    choreo-ir-core
+    GTest::gtest
+    GTest::gtest_main
+)
+
+target_include_directories(test_shape
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/tests
+)
+
+target_compile_features(test_shape PRIVATE cxx_std_14)
+
+# Add compiler-specific flags
+target_compile_options(test_shape PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra>
+)
+
+# Register shape test with CTest
+add_test(NAME ShapeTest COMMAND test_shape)
+set_tests_properties(ShapeTest PROPERTIES
+    TIMEOUT 60
+    LABELS "unit;tensor;shape"
+)
+
+# Create stride test executable
+add_executable(test_stride
+    test_stride.cpp
+)
+
+target_link_libraries(test_stride
+    PRIVATE
+    choreo-ir-core
+    GTest::gtest
+    GTest::gtest_main
+)
+
+target_include_directories(test_stride
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/tests
+)
+
+target_compile_features(test_stride PRIVATE cxx_std_14)
+
+# Add compiler-specific flags
+target_compile_options(test_stride PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra>
+)
+
+# Register stride test with CTest
+add_test(NAME StrideTest COMMAND test_stride)
+set_tests_properties(StrideTest PROPERTIES
+    TIMEOUT 60
+    LABELS "unit;tensor;stride"
+)
+
 # Create integration test executable
 add_executable(test_integration
     test_integration.cpp
@@ -154,7 +218,7 @@ set_tests_properties(IntegrationTest PROPERTIES
 # Create custom target to run all tests
 add_custom_target(run_tests
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
-    DEPENDS test_device test_ideal_api test_integration
+    DEPENDS test_device test_shape test_stride test_ideal_api test_integration
     COMMENT "Running all tests"
 )
 
@@ -163,6 +227,13 @@ add_custom_target(run_device_tests
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -L device
     DEPENDS test_device
     COMMENT "Running device management tests"
+)
+
+# Create custom target for tensor tests only
+add_custom_target(run_tensor_tests
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -L tensor
+    DEPENDS test_shape test_stride
+    COMMENT "Running tensor abstraction tests"
 )
 
 # Memory leak detection test (if available)
