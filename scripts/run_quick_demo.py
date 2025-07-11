@@ -114,7 +114,7 @@ def show_api_demo():
     demo_code = '''
 // Ideal Choreo-IR usage - as simple as mathematical notation!
 
-#include "choreo-ir/ideal_api.hpp"
+#include "choreo-ir/end2end.hpp"
 using namespace choreo_ir;
 
 int main() {

@@ -2,7 +2,8 @@
 
 # Find required packages
 find_package(GTest REQUIRED)
-find_package(CUDAToolkit REQUIRED)
+find_package(CUDA REQUIRED)
+find_package(Threads REQUIRED)
 
 # Create core library target (header-only interface library)
 add_library(choreo-ir-core INTERFACE)
@@ -12,10 +13,11 @@ target_include_directories(choreo-ir-core
 )
 target_link_libraries(choreo-ir-core 
     INTERFACE
-    CUDA::cudart
-    CUDA::cublas
+    ${CUDA_LIBRARIES}
+    ${CUDA_CUBLAS_LIBRARIES}
 )
-target_compile_features(choreo-ir-core INTERFACE cxx_std_14)
+# Set C++17 for the core library
+target_compile_features(choreo-ir-core INTERFACE cxx_std_17)
 
 # Create device management test
 add_executable(test_device
@@ -27,23 +29,46 @@ target_link_libraries(test_device
     choreo-ir-core
     GTest::gtest
     GTest::gtest_main
-    CUDA::cudart
+    ${CUDA_LIBRARIES}
 )
 
 target_include_directories(test_device
     PRIVATE
     ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/tests
+    ${CUDA_INCLUDE_DIRS}
 )
 
-# Set C++ standard
-target_compile_features(test_device PRIVATE cxx_std_14)
+# Set C++17 for device test
+set_property(TARGET test_device PROPERTY CXX_STANDARD 17)
+set_property(TARGET test_device PROPERTY CXX_STANDARD_REQUIRED ON)
+
+# Create debug test for matrix multiplication
+add_executable(test_debug_simple
+    test_debug_simple.cpp
+)
+
+target_link_libraries(test_debug_simple
+    PRIVATE
+    choreo-ir-core
+    ${CUDA_LIBRARIES}
+)
+
+target_include_directories(test_debug_simple
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CUDA_INCLUDE_DIRS}
+)
+
+# Set C++17 for debug test
+set_property(TARGET test_debug_simple PROPERTY CXX_STANDARD 17)
+set_property(TARGET test_debug_simple PROPERTY CXX_STANDARD_REQUIRED ON)
 
 # Add CUDA support if available
 if(CMAKE_CUDA_COMPILER)
     enable_language(CUDA)
-    set_property(TARGET test_device PROPERTY CUDA_STANDARD 14)
-    set_property(TARGET test_device PROPERTY CUDA_STANDARD_REQUIRED ON)
+    # 注释掉 CUDA_STANDARD 17，避免语言标准要求
+    # set_property(TARGET test_device PROPERTY CUDA_STANDARD 17)
+    # set_property(TARGET test_device PROPERTY CUDA_STANDARD_REQUIRED ON)
 endif()
 
 # Add compiler-specific flags
@@ -59,47 +84,49 @@ set_tests_properties(DeviceTest PROPERTIES
     LABELS "unit;device;cuda"
 )
 
-# Create test for ideal API
-add_executable(test_ideal_api
-    test_ideal_api.cpp
+# Create test for end2end API
+add_executable(test_end2end
+    test_end2end.cpp
 )
 
-target_link_libraries(test_ideal_api
-    PRIVATE
-    choreo-ir-core
-    GTest::gtest
-    GTest::gtest_main
-    CUDA::cublas
-    CUDA::cudart
+target_link_libraries(test_end2end
+    PRIVATE 
+        choreo-ir-core
+        choreo-ir-baselines
+        GTest::gtest
+        GTest::gtest_main
+        ${CUDA_LIBRARIES}
+        ${CUDA_CUBLAS_LIBRARIES}
+        Threads::Threads
 )
 
-target_include_directories(test_ideal_api
-    PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/tests
+target_include_directories(test_end2end
+    PRIVATE 
+        ${CMAKE_SOURCE_DIR}/include
+        ${GTEST_INCLUDE_DIRS}
 )
 
-# Set C++ standard
-target_compile_features(test_ideal_api PRIVATE cxx_std_14)
+# Set C++17 standard for test_end2end
+set_property(TARGET test_end2end PROPERTY CXX_STANDARD 17)
+set_property(TARGET test_end2end PROPERTY CXX_STANDARD_REQUIRED ON)
 
-# Add CUDA support if available
+# CUDA configuration for test_end2end
 if(CMAKE_CUDA_COMPILER)
-    enable_language(CUDA)
-    set_property(TARGET test_ideal_api PROPERTY CUDA_STANDARD 14)
-    set_property(TARGET test_ideal_api PROPERTY CUDA_STANDARD_REQUIRED ON)
+    # 注释掉 CUDA_STANDARD 17，避免语言标准要求
+    # set_property(TARGET test_end2end PROPERTY CUDA_STANDARD 17)
+    # set_property(TARGET test_end2end PROPERTY CUDA_STANDARD_REQUIRED ON)
 endif()
 
-# Add compiler-specific flags
-target_compile_options(test_ideal_api PRIVATE
-    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra>
+# Add compiler options for test_end2end
+target_compile_options(test_end2end PRIVATE
     $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
 )
 
-# Register test with CTest
-add_test(NAME IdealAPITest COMMAND test_ideal_api)
+# Register the test
+add_test(NAME End2EndAPITest COMMAND test_end2end)
 
 # Set test properties
-set_tests_properties(IdealAPITest PROPERTIES
+set_tests_properties(End2EndAPITest PROPERTIES
     TIMEOUT 300
     LABELS "unit;api;cuda"
 )
@@ -107,19 +134,19 @@ set_tests_properties(IdealAPITest PROPERTIES
 # Add custom test for specific GPU architectures
 if(CMAKE_CUDA_COMPILER)
     # Test for tensor core support (requires compute capability >= 7.0)
-    add_test(NAME IdealAPITest_TensorCore 
-        COMMAND test_ideal_api --gtest_filter="*TensorCore*"
+    add_test(NAME End2EndAPITest_TensorCore 
+        COMMAND test_end2end --gtest_filter="*TensorCore*"
     )
-    set_tests_properties(IdealAPITest_TensorCore PROPERTIES
+    set_tests_properties(End2EndAPITest_TensorCore PROPERTIES
         TIMEOUT 600
         LABELS "unit;api;cuda;tensor_core"
     )
     
     # Test for large matrices (requires sufficient GPU memory)
-    add_test(NAME IdealAPITest_LargeMatrix
-        COMMAND test_ideal_api --gtest_filter="*LargeMatrix*"
+    add_test(NAME End2EndAPITest_LargeMatrix
+        COMMAND test_end2end --gtest_filter="*LargeMatrix*"
     )
-    set_tests_properties(IdealAPITest_LargeMatrix PROPERTIES
+    set_tests_properties(End2EndAPITest_LargeMatrix PROPERTIES
         TIMEOUT 900
         LABELS "unit;api;cuda;large_memory"
     )
@@ -143,7 +170,8 @@ target_include_directories(test_shape
     ${CMAKE_SOURCE_DIR}/tests
 )
 
-target_compile_features(test_shape PRIVATE cxx_std_14)
+set_property(TARGET test_shape PROPERTY CXX_STANDARD 17)
+set_property(TARGET test_shape PROPERTY CXX_STANDARD_REQUIRED ON)
 
 # Add compiler-specific flags
 target_compile_options(test_shape PRIVATE
@@ -175,7 +203,8 @@ target_include_directories(test_stride
     ${CMAKE_SOURCE_DIR}/tests
 )
 
-target_compile_features(test_stride PRIVATE cxx_std_14)
+set_property(TARGET test_stride PROPERTY CXX_STANDARD 17)
+set_property(TARGET test_stride PROPERTY CXX_STANDARD_REQUIRED ON)
 
 # Add compiler-specific flags
 target_compile_options(test_stride PRIVATE
@@ -207,7 +236,8 @@ target_include_directories(test_layout
     ${CMAKE_SOURCE_DIR}/tests
 )
 
-target_compile_features(test_layout PRIVATE cxx_std_14)
+set_property(TARGET test_layout PROPERTY CXX_STANDARD 17)
+set_property(TARGET test_layout PROPERTY CXX_STANDARD_REQUIRED ON)
 
 # Add compiler-specific flags
 target_compile_options(test_layout PRIVATE
@@ -223,7 +253,7 @@ set_tests_properties(LayoutTest PROPERTIES
 
 # Create tensor test executable
 add_executable(test_tensor
-    test_tensor_simple.cpp
+    test_tensor.cpp
 )
 
 target_link_libraries(test_tensor
@@ -239,7 +269,8 @@ target_include_directories(test_tensor
     ${CMAKE_SOURCE_DIR}/tests
 )
 
-target_compile_features(test_tensor PRIVATE cxx_std_14)
+set_property(TARGET test_tensor PROPERTY CXX_STANDARD 17)
+set_property(TARGET test_tensor PROPERTY CXX_STANDARD_REQUIRED ON)
 
 # Add compiler-specific flags
 target_compile_options(test_tensor PRIVATE
@@ -263,7 +294,7 @@ target_link_libraries(test_cuda_utils
     choreo-ir-core
     GTest::gtest
     GTest::gtest_main
-    CUDA::cudart
+    ${CUDA_LIBRARIES}
 )
 
 target_include_directories(test_cuda_utils
@@ -272,7 +303,8 @@ target_include_directories(test_cuda_utils
     ${CMAKE_SOURCE_DIR}/tests
 )
 
-target_compile_features(test_cuda_utils PRIVATE cxx_std_14)
+set_property(TARGET test_cuda_utils PROPERTY CXX_STANDARD 17)
+set_property(TARGET test_cuda_utils PROPERTY CXX_STANDARD_REQUIRED ON)
 
 # Add compiler-specific flags
 target_compile_options(test_cuda_utils PRIVATE
@@ -285,6 +317,8 @@ set_tests_properties(CudaUtilsTest PROPERTIES
     TIMEOUT 60
     LABELS "unit;cuda;utils"
 )
+
+
 
 # Create integration test executable
 add_executable(test_integration
@@ -303,7 +337,8 @@ target_include_directories(test_integration
     ${CMAKE_SOURCE_DIR}/include
 )
 
-target_compile_features(test_integration PRIVATE cxx_std_14)
+set_property(TARGET test_integration PROPERTY CXX_STANDARD 17)
+set_property(TARGET test_integration PROPERTY CXX_STANDARD_REQUIRED ON)
 
 # Register integration test
 add_test(NAME IntegrationTest COMMAND test_integration)
@@ -315,7 +350,7 @@ set_tests_properties(IntegrationTest PROPERTIES
 # Create custom target to run all tests
 add_custom_target(run_tests
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
-    DEPENDS test_device test_shape test_stride test_layout test_tensor test_ideal_api test_integration
+    DEPENDS test_device test_shape test_stride test_layout test_tensor test_end2end test_integration test_cuda_core
     COMMENT "Running all tests"
 )
 
@@ -336,14 +371,14 @@ add_custom_target(run_tensor_tests
 # Memory leak detection test (if available)
 find_program(VALGRIND_EXECUTABLE valgrind)
 if(VALGRIND_EXECUTABLE)
-    add_test(NAME IdealAPITest_MemoryCheck
+    add_test(NAME End2EndAPITest_MemoryCheck
         COMMAND ${VALGRIND_EXECUTABLE} 
         --tool=memcheck 
         --leak-check=full 
         --error-exitcode=1
-        $<TARGET_FILE:test_ideal_api>
+        $<TARGET_FILE:test_end2end>
     )
-    set_tests_properties(IdealAPITest_MemoryCheck PROPERTIES
+    set_tests_properties(End2EndAPITest_MemoryCheck PROPERTIES
         TIMEOUT 1800
         LABELS "unit;api;memory"
     )
@@ -360,22 +395,24 @@ target_link_libraries(test_performance_comparison
     choreo-ir-baselines
     GTest::gtest
     GTest::gtest_main
-    CUDA::cublas
-    CUDA::cudart
+    ${CUDA_CUBLAS_LIBRARIES}
+    ${CUDA_LIBRARIES}
 )
 
 target_include_directories(test_performance_comparison
     PRIVATE
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/tests
-    ${CMAKE_SOURCE_DIR}/benchmark/baselines
+    ${CMAKE_SOURCE_DIR}/baselines/include
 )
 
-target_compile_features(test_performance_comparison PRIVATE cxx_std_14)
+set_property(TARGET test_performance_comparison PROPERTY CXX_STANDARD 17)
+set_property(TARGET test_performance_comparison PROPERTY CXX_STANDARD_REQUIRED ON)
 
 if(CMAKE_CUDA_COMPILER)
-    set_property(TARGET test_performance_comparison PROPERTY CUDA_STANDARD 14)
-    set_property(TARGET test_performance_comparison PROPERTY CUDA_STANDARD_REQUIRED ON)
+    # 注释掉 CUDA_STANDARD 17，避免语言标准要求
+    # set_property(TARGET test_performance_comparison PROPERTY CUDA_STANDARD 17)
+    # set_property(TARGET test_performance_comparison PROPERTY CUDA_STANDARD_REQUIRED ON)
 endif()
 
 add_test(NAME PerformanceComparisonTest COMMAND test_performance_comparison)
@@ -388,8 +425,8 @@ set_tests_properties(PerformanceComparisonTest PROPERTIES
 if(CMAKE_COMPILER_IS_GNUCXX)
     option(ENABLE_COVERAGE "Enable test coverage" OFF)
     if(ENABLE_COVERAGE)
-        target_compile_options(test_ideal_api PRIVATE --coverage)
-        target_link_libraries(test_ideal_api PRIVATE --coverage)
+        target_compile_options(test_end2end PRIVATE --coverage)
+        target_link_libraries(test_end2end PRIVATE --coverage)
         
         target_compile_options(test_integration PRIVATE --coverage)
         target_link_libraries(test_integration PRIVATE --coverage)
@@ -419,8 +456,8 @@ if(ENABLE_SANITIZERS)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         set(SANITIZER_FLAGS "-fsanitize=address,undefined -fno-omit-frame-pointer")
         
-        target_compile_options(test_ideal_api PRIVATE ${SANITIZER_FLAGS})
-        target_link_options(test_ideal_api PRIVATE ${SANITIZER_FLAGS})
+        target_compile_options(test_end2end PRIVATE ${SANITIZER_FLAGS})
+        target_link_options(test_end2end PRIVATE ${SANITIZER_FLAGS})
         
         target_compile_options(test_integration PRIVATE ${SANITIZER_FLAGS})
         target_link_options(test_integration PRIVATE ${SANITIZER_FLAGS})
@@ -433,7 +470,7 @@ endif()
 
 # Print test configuration summary
 message(STATUS "Test configuration:")
-message(STATUS "  Unit tests: test_ideal_api")
+message(STATUS "  Unit tests: test_end2end")
 message(STATUS "  Integration tests: test_integration") 
 message(STATUS "  Performance tests: test_performance_comparison")
 if(VALGRIND_EXECUTABLE)

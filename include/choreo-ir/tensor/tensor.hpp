@@ -10,11 +10,14 @@
 #include <algorithm>
 #include <cstring>
 #include <type_traits>
+#include <cassert>
 #include <cuda_runtime.h>
 #include "layout.hpp"
 #include "../core/types.hpp"
 #include "../core/config.hpp"
 #include "../core/device.hpp"
+
+// Using C++17 std::is_same_v
 
 namespace choreo_ir {
 
@@ -153,55 +156,55 @@ public:
     }
 
     /**
-     * @brief Copy data to shared memory (device function)
+     * @brief Copy data to shared memory (device function, device-only)
      * @param shared_ptr Shared memory pointer
      * @param tile_shape Shape of the tile to copy
      * @return TensorView pointing to shared memory
      */
     template<dim_t MAX_SHARED_SIZE = 49152> // 48KB default shared memory
     __device__ TensorView<T> copy_to_shared(T* shared_ptr, const Shape& tile_shape) const {
-        static_assert(MAX_SHARED_SIZE > 0, "Shared memory size must be positive");
-        
-        // Calculate thread mapping for coalesced access
-        index_t tid = threadIdx.x + threadIdx.y * blockDim.x + threadIdx.z * blockDim.x * blockDim.y;
-        index_t total_threads = blockDim.x * blockDim.y * blockDim.z;
-        index_t total_elements = tile_shape.numel();
-        
-        // Each thread copies multiple elements if needed
-        for (index_t i = tid; i < total_elements; i += total_threads) {
+#if defined(__CUDA_ARCH__)
+        // Device implementation
+        index_t copy_size = std::min(tile_shape.numel(), numel());
+        #pragma unroll
+        for (index_t i = 0; i < copy_size; ++i) {
             shared_ptr[i] = data_[i];
         }
-        
-        __syncthreads(); // Ensure all threads complete the copy
-        
+        __syncthreads();
         Layout shared_layout(tile_shape);
         return TensorView<T>(shared_ptr, shared_layout, MemorySpace::SHARED);
+#else
+        // Host compilation - return dummy view
+        return TensorView<T>(nullptr, Layout(), MemorySpace::GLOBAL);
+#endif
     }
 
     /**
-     * @brief Copy data to local memory (registers)
+     * @brief Copy data to local memory (registers, device-only)
      * @param local_array Local array to copy to
      * @param num_elements Number of elements to copy
      * @return TensorView pointing to local memory
      */
     template<dim_t LOCAL_SIZE>
     __device__ TensorView<T> copy_to_local(T (&local_array)[LOCAL_SIZE]) const {
+#if defined(__CUDA_ARCH__)
         static_assert(LOCAL_SIZE > 0, "Local array size must be positive");
-        
         index_t copy_size = std::min(LOCAL_SIZE, static_cast<dim_t>(numel()));
-        
         #pragma unroll
         for (dim_t i = 0; i < copy_size; ++i) {
             local_array[i] = data_[i];
         }
-        
         Shape local_shape({copy_size});
         Layout local_layout(local_shape);
         return TensorView<T>(local_array, local_layout, MemorySpace::LOCAL);
+#else
+        // Host compilation - return dummy view
+        return TensorView<T>(nullptr, Layout(), MemorySpace::GLOBAL);
+#endif
     }
 
     /**
-     * @brief Asynchronous copy from global to shared memory
+     * @brief Asynchronous copy from global to shared memory (device-only)
      * @param shared_ptr Shared memory destination
      * @param tile_shape Shape of tile to copy
      * @param stream CUDA stream for async copy
@@ -209,6 +212,7 @@ public:
      */
     __device__ TensorView<T> async_copy_to_shared(T* shared_ptr, const Shape& tile_shape, 
                                                  cudaStream_t stream = 0) const {
+#if defined(__CUDA_ARCH__)
         // Use cp.async instructions if available (Ampere+)
         #if __CUDA_ARCH__ >= 800
             // Implementation would use cp.async for memory-level parallelism
@@ -216,6 +220,10 @@ public:
         #else
             return copy_to_shared(shared_ptr, tile_shape);
         #endif
+#else
+        // Host compilation - return dummy view
+        return TensorView<T>(nullptr, Layout(), MemorySpace::GLOBAL);
+#endif
     }
 
     /**
@@ -253,7 +261,7 @@ private:
 
 /**
  * @class LocalTensor
- * @brief Thread-local tensor stored in registers
+ * @brief Local memory tensor (registers)
  */
 template<typename T, dim_t SIZE>
 class LocalTensor {
@@ -261,7 +269,7 @@ public:
     __device__ LocalTensor() = default;
     
     __device__ LocalTensor(const Shape& shape) : layout_(shape) {
-        static_assert(SIZE >= 1, "Local tensor size must be at least 1");
+        static_assert(SIZE > 0, "Local tensor size must be positive");
     }
     
     __device__ TensorView<T> view() {
@@ -281,39 +289,6 @@ private:
 };
 
 /**
- * @class SharedTensor
- * @brief Block-level shared memory tensor
- */
-template<typename T, dim_t SIZE>
-class SharedTensor {
-public:
-    __device__ SharedTensor() = default;
-    
-    __device__ SharedTensor(const Shape& shape) : layout_(shape) {
-        static_assert(SIZE >= 1, "Shared tensor size must be at least 1");
-    }
-    
-    __device__ TensorView<T> view() {
-        return TensorView<T>(data_, layout_, MemorySpace::SHARED);
-    }
-    
-    __device__ const TensorView<T> view() const {
-        return TensorView<T>(const_cast<T*>(data_), layout_, MemorySpace::SHARED);
-    }
-    
-    __device__ T& operator[](index_t i) { return data_[i]; }
-    __device__ const T& operator[](index_t i) const { return data_[i]; }
-    
-private:
-    __shared__ static T data_[SIZE];
-    Layout layout_;
-};
-
-// Static member definition
-template<typename T, dim_t SIZE>
-__shared__ T SharedTensor<T, SIZE>::data_[SIZE];
-
-/**
  * @class Tensor
  * @brief Owning tensor class with automatic memory management (global memory)
  */
@@ -323,7 +298,9 @@ public:
     /**
      * @brief Default constructor - creates empty tensor
      */
-    Tensor() : data_(nullptr), layout_(), memory_type_(MemoryType::DEVICE) {}
+    Tensor() : data_(nullptr), layout_(), memory_type_(MemoryType::DEVICE) {
+        // printf("[Tensor] Default constructed, data_=%p\n", (void*)data_);
+    }
 
     /**
      * @brief Constructor from shape
@@ -332,7 +309,9 @@ public:
      */
     explicit Tensor(const Shape& shape, MemoryType memory_type = MemoryType::DEVICE)
         : layout_(shape), memory_type_(memory_type) {
+        // printf("[Tensor] Constructed with shape, shape.numel()=%ld\n", shape.numel());
         allocate();
+        // printf("[Tensor] After allocate, data_=%p\n", (void*)data_);
     }
 
     /**
@@ -342,7 +321,9 @@ public:
      */
     explicit Tensor(const Layout& layout, MemoryType memory_type = MemoryType::DEVICE)
         : layout_(layout), memory_type_(memory_type) {
+        // printf("[Tensor] Constructed with layout, layout.numel()=%ld\n", layout.numel());
         allocate();
+        // printf("[Tensor] After allocate, data_=%p\n", (void*)data_);
     }
 
     /**
@@ -406,7 +387,11 @@ public:
      * @brief Get data pointer
      * @return Data pointer
      */
-    T* data() const { return data_; }
+    T* data() const {
+        // printf("[Tensor] data() called, data_=%p\n", (void*)data_);
+        assert(data_ != nullptr && "Tensor::data() is nullptr!");
+        return data_;
+    }
 
     /**
      * @brief Get tensor layout
@@ -543,6 +528,8 @@ public:
      * @param value Fill value
      */
     void fill(T value) {
+        // printf("[Tensor] fill: data_=%p, numel=%ld\n", (void*)data_, layout_.numel());
+        assert(data_ != nullptr && "Tensor::fill: data_ is nullptr!");
         if (data_ == nullptr || layout_.numel() == 0) {
             return;
         }
@@ -552,13 +539,24 @@ public:
             std::fill_n(data_, layout_.numel(), value);
         } else {
             // Device memory: use cudaMemset for zero, otherwise launch a simple kernel
-            if (value == T(0)) {
-                cudaMemset(data_, 0, layout_.numel() * sizeof(T));
+            if constexpr (std::is_same_v<T, __half>) {
+                if (value == __float2half(0.0f)) {
+                    cudaMemset(data_, 0, layout_.numel() * sizeof(T));
+                } else {
+                    // For non-zero values, we'd need a CUDA kernel
+                    // For now, use host memory and copy
+                    std::vector<T> host_data(layout_.numel(), value);
+                    cudaMemcpy(data_, host_data.data(), layout_.numel() * sizeof(T), cudaMemcpyHostToDevice);
+                }
             } else {
-                // For non-zero values, we'd need a CUDA kernel
-                // For now, use host memory and copy
-                std::vector<T> host_data(layout_.numel(), value);
-                cudaMemcpy(data_, host_data.data(), layout_.numel() * sizeof(T), cudaMemcpyHostToDevice);
+                if (value == T(0)) {
+                    cudaMemset(data_, 0, layout_.numel() * sizeof(T));
+                } else {
+                    // For non-zero values, we'd need a CUDA kernel
+                    // For now, use host memory and copy
+                    std::vector<T> host_data(layout_.numel(), value);
+                    cudaMemcpy(data_, host_data.data(), layout_.numel() * sizeof(T), cudaMemcpyHostToDevice);
+                }
             }
         }
     }
@@ -625,7 +623,11 @@ public:
      */
     static Tensor<T> zeros(const Shape& shape, MemoryType memory_type = MemoryType::DEVICE) {
         Tensor<T> tensor(shape, memory_type);
-        tensor.fill(T(0));
+        if constexpr (std::is_same_v<T, __half>) {
+            tensor.fill(__float2half(0.0f));
+        } else {
+            tensor.fill(T(0));
+        }
         return tensor;
     }
 
@@ -637,7 +639,11 @@ public:
      */
     static Tensor<T> ones(const Shape& shape, MemoryType memory_type = MemoryType::DEVICE) {
         Tensor<T> tensor(shape, memory_type);
-        tensor.fill(T(1));
+        if constexpr (std::is_same_v<T, __half>) {
+            tensor.fill(__float2half(1.0f));
+        } else {
+            tensor.fill(T(1));
+        }
         return tensor;
     }
 
@@ -652,6 +658,7 @@ private:
     void allocate() {
         if (layout_.numel() == 0) {
             data_ = nullptr;
+            // printf("[Tensor] allocate: numel==0, data_=nullptr\n");
             return;
         }
         
@@ -659,11 +666,27 @@ private:
         
         if (memory_type_ == MemoryType::HOST) {
             data_ = new T[layout_.numel()];
+            // printf("[Tensor] allocate: HOST, data_=%p\n", (void*)data_);
         } else if (memory_type_ == MemoryType::DEVICE) {
-            cudaMalloc(&data_, bytes);
+            cudaError_t err = cudaMalloc(&data_, bytes);
+            if (err != cudaSuccess) {
+                data_ = nullptr;
+                fprintf(stderr, "[Tensor] allocate: cudaMalloc failed! shape=[");
+                for (int i = 0; i < layout_.shape().ndims(); ++i) fprintf(stderr, "%ld,", (long)layout_.shape()[i]);
+                fprintf(stderr, "] bytes=%zu, error=%s\n", bytes, cudaGetErrorString(err));
+                throw std::runtime_error("Tensor::allocate: cudaMalloc failed");
+            }
+            // printf("[Tensor] allocate: DEVICE, data_=%p\n", (void*)data_);
         } else {
-            // MemoryType::UNIFIED
-            cudaMallocManaged(&data_, bytes);
+            cudaError_t err = cudaMallocManaged(&data_, bytes);
+            if (err != cudaSuccess) {
+                data_ = nullptr;
+                fprintf(stderr, "[Tensor] allocate: cudaMallocManaged failed! shape=[");
+                for (int i = 0; i < layout_.shape().ndims(); ++i) fprintf(stderr, "%ld,", (long)layout_.shape()[i]);
+                fprintf(stderr, "] bytes=%zu, error=%s\n", bytes, cudaGetErrorString(err));
+                throw std::runtime_error("Tensor::allocate: cudaMallocManaged failed");
+            }
+            // printf("[Tensor] allocate: UNIFIED, data_=%p\n", (void*)data_);
         }
     }
 

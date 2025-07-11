@@ -20,7 +20,7 @@
 #include <iomanip>
 
 // Our ideal API
-#include "choreo-ir/ideal_api.hpp"
+#include "choreo-ir/choreo-ir.hpp"
 
 // Baseline implementations
 #include "../baselines/cublas_impl.hpp"

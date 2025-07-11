@@ -10,7 +10,7 @@ We've built a complete testing and performance framework that validates our idea
 
 ### 1. Unit Tests (`tests/`)
 
-**File**: `tests/test_ideal_api.cpp`
+**File**: `tests/test_end2end.cpp`
 
 Comprehensive unit tests for the ideal programming experience API:
 

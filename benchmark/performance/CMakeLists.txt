@@ -26,14 +26,16 @@ target_include_directories(benchmark_suite
     ${CMAKE_SOURCE_DIR}/benchmark/baselines
 )
 
-# Set C++ standard
-target_compile_features(benchmark_suite PRIVATE cxx_std_14)
+# 删除所有 target_compile_features 相关行，只保留 set_property 方式
+set_property(TARGET benchmark_suite PROPERTY CXX_STANDARD 17)
+set_property(TARGET benchmark_suite PROPERTY CXX_STANDARD_REQUIRED ON)
 
 # Add CUDA support
 if(CMAKE_CUDA_COMPILER)
     enable_language(CUDA)
-    set_property(TARGET benchmark_suite PROPERTY CUDA_STANDARD 14)
-    set_property(TARGET benchmark_suite PROPERTY CUDA_STANDARD_REQUIRED ON)
+    # 注释掉 CUDA_STANDARD 14，避免全局语言标准要求
+    # set_property(TARGET benchmark_suite PROPERTY CUDA_STANDARD 14)
+    # set_property(TARGET benchmark_suite PROPERTY CUDA_STANDARD_REQUIRED ON)
     set_property(TARGET benchmark_suite PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 endif()
 

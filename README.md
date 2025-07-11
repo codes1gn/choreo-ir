@@ -154,7 +154,7 @@ choreo-ir/
 │   │   ├── conv.hpp            # Convolution operations
 │   │   └── elementwise.hpp     # Element-wise operations
 │   ├── utils/                  # Utilities and debugging
-│   ├── ideal_api.hpp           # High-level intuitive API
+│   ├── choreo-ir.hpp           # Main header with high-level API for benchmarking
 │   └── choreo-ir.hpp          # Main header file
 ├── benchmark/                  # Kernel implementations and performance tests
 │   ├── kernels/                # CUDA kernels using the DSL

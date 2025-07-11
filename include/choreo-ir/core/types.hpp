@@ -8,7 +8,14 @@
 
 #include <cstdint>
 #include <cuda_fp16.h>
+
+// Conditional inclusion for bfloat16 support
+#if defined(__CUDACC__) && __CUDACC_VER_MAJOR__ >= 11
 #include <cuda_bf16.h>
+#define CHOREO_IR_HAS_BF16 1
+#else
+#define CHOREO_IR_HAS_BF16 0
+#endif
 
 namespace choreo_ir {
 
@@ -26,7 +33,18 @@ using uint64_t = std::uint64_t;
 using float32_t = float;
 using float64_t = double;
 using float16_t = __half;
+
+#if CHOREO_IR_HAS_BF16
 using bfloat16_t = __nv_bfloat16;
+#else
+// Fallback for older CUDA versions
+struct bfloat16_t {
+    uint16_t x;
+    bfloat16_t() = default;
+    bfloat16_t(uint16_t val) : x(val) {}
+    operator uint16_t() const { return x; }
+};
+#endif
 
 // Index and dimension types
 using index_t = int64_t;

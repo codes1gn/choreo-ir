@@ -2,7 +2,7 @@
 
 # Find required packages
 find_package(benchmark REQUIRED)
-find_package(CUDAToolkit REQUIRED)
+find_package(CUDA REQUIRED)
 
 # Create baseline implementations library
 add_subdirectory(baselines)
