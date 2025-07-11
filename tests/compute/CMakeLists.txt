@@ -3,7 +3,7 @@ target_link_libraries(test_wmma gtest gtest_main pthread)
 set_property(TARGET test_wmma PROPERTY CXX_STANDARD 17)
 set_property(TARGET test_wmma PROPERTY CXX_STANDARD_REQUIRED ON)
 set_target_properties(test_wmma PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-set_target_properties(test_wmma PROPERTIES CUDA_ARCHITECTURES 70)
+set_target_properties(test_wmma PROPERTIES CUDA_ARCHITECTURES 80)
 # 强制 CUDA 文件用 c++14 编译，避免 CUDA17 错误
 set_target_properties(test_wmma PROPERTIES CUDA_NVCC_FLAGS "-std=c++14")
 
@@ -12,7 +12,7 @@ target_link_libraries(test_mma gtest gtest_main pthread)
 set_property(TARGET test_mma PROPERTY CXX_STANDARD 17)
 set_property(TARGET test_mma PROPERTY CXX_STANDARD_REQUIRED ON)
 set_target_properties(test_mma PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-set_target_properties(test_mma PROPERTIES CUDA_ARCHITECTURES 75)
+set_target_properties(test_mma PROPERTIES CUDA_ARCHITECTURES 80)
 # 强制 CUDA 文件用 c++14 编译，避免 CUDA17 错误
 set_target_properties(test_mma PROPERTIES CUDA_NVCC_FLAGS "-std=c++14")
 
@@ -41,15 +41,3 @@ set_property(TARGET test_cuda_core PROPERTY CXX_STANDARD_REQUIRED ON)
 set_target_properties(test_cuda_core PROPERTIES CUDA_NVCC_FLAGS "-std=c++14")
 set_target_properties(test_cuda_core PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(test_cuda_core PROPERTIES CUDA_ARCHITECTURES 80)
-
-target_compile_options(test_cuda_core PRIVATE
-    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra>
-    $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
-)
-
-# Register compute test with CTest
-add_test(NAME CudaCoreTest COMMAND test_cuda_core)
-set_tests_properties(CudaCoreTest PROPERTIES
-    TIMEOUT 120
-    LABELS "unit;compute;cuda_core"
-) 

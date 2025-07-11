@@ -22,6 +22,8 @@ Thumbs.db
 *.tmp
 *.temp
 *.log
+*.out
+*.err
 
 # Compiled files
 *.o
@@ -63,6 +65,8 @@ __pycache__/
 env/
 venv/
 .env
+.host_compiler
+.cuda_arch
 
 # Documentation build
 docs/_build/

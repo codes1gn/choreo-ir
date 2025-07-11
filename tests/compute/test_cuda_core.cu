@@ -41,12 +41,12 @@ protected:
         std::random_device rd;
         std::mt19937 gen(rd());
         
-        if constexpr (std::is_same_v<T, float>) {
+        if (std::is_same<T, float>::value) {
             std::uniform_real_distribution<float> dis(-1.0f, 1.0f);
             for (size_t i = 0; i < host_data.size(); ++i) {
                 host_data[i] = dis(gen);
             }
-        } else if constexpr (std::is_same_v<T, __half>) {
+        } else if (std::is_same<T, __half>::value) {
             std::uniform_real_distribution<float> dis(-1.0f, 1.0f);
             for (size_t i = 0; i < host_data.size(); ++i) {
                 host_data[i] = __float2half(dis(gen));
@@ -180,7 +180,9 @@ TEST_F(CudaCoreTest, DifferentSizes) {
         {{32, 16}, {16, 32}}
     };
     
-    for (const auto& [shape_A, shape_B] : test_cases) {
+    for (const auto& test_case : test_cases) {
+        const Shape& shape_A = test_case.first;
+        const Shape& shape_B = test_case.second;
         Shape shape_C({shape_A[0], shape_B[1]});
         
         auto A = create_random_tensor<float>(shape_A);

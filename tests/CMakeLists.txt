@@ -284,6 +284,9 @@ set_tests_properties(TensorTest PROPERTIES
     LABELS "unit;tensor;core"
 )
 
+# Add compute subdirectory
+add_subdirectory(compute)
+
 # Create cuda_utils test executable
 add_executable(test_cuda_utils
     test_cuda_utils.cpp
